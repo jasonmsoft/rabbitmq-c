@@ -152,7 +152,7 @@ amqp_ssl_socket_recv(void *base,
 }
 
 static int
-amqp_ssl_socket_verify(void *base, const char *host)
+amqp_ssl_socket_verify_hostname(void *base, const char *host)
 {
   struct amqp_ssl_socket_t *self = (struct amqp_ssl_socket_t *)base;
   unsigned char *utf8_value = NULL, *cp, ch;
@@ -231,7 +231,7 @@ amqp_ssl_socket_open(void *base, const char *host, int port)
   SSL_set_mode(self->ssl, SSL_MODE_AUTO_RETRY);
   self->sockfd = amqp_open_socket(host, port);
   if (0 > self->sockfd) {
-    self->last_error = -self->sockfd;
+    self->last_error = self->sockfd;
     return -1;
   }
   status = SSL_set_fd(self->ssl, self->sockfd);
@@ -241,18 +241,18 @@ amqp_ssl_socket_open(void *base, const char *host, int port)
   }
   status = SSL_connect(self->ssl);
   if (!status) {
-    self->last_error = AMQP_STATUS_SSL_ERROR;
+    self->last_error = AMQP_STATUS_SSL_CONNECTION_FAILED;
     return -1;
   }
   result = SSL_get_verify_result(self->ssl);
   if (X509_V_OK != result) {
-    self->last_error = AMQP_STATUS_SSL_ERROR;
+    self->last_error = AMQP_STATUS_SSL_PEER_VERIFY_FAILED;
     return -1;
   }
   if (self->verify) {
-    int status = amqp_ssl_socket_verify(self, host);
+    int status = amqp_ssl_socket_verify_hostname(self, host);
     if (status) {
-      self->last_error = AMQP_STATUS_SSL_ERROR;
+      self->last_error = AMQP_STATUS_SSL_HOSTNAME_VERIFY_FAILED;
       return -1;
     }
   }
