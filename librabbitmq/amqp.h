@@ -331,18 +331,18 @@ typedef struct amqp_socket_t_ amqp_socket_t;
 
 typedef enum amqp_status_enum_
 {
-  AMQP_STATUS_OK =                         0,
-  AMQP_STATUS_NO_MEMORY =                 -1,
-  AMQP_STATUS_BAD_AMQP_DATA =             -2,
-  AMQP_STATUS_UNKNOWN_CLASS =             -3,
-  AMQP_STATUS_UNKNOWN_METHOD =            -4,
-  AMQP_STATUS_GETHOSTBYNAME_FAILED =      -5,
-  AMQP_STATUS_INCOMPATIBLE_AMQP_VERSION = -6,
-  AMQP_STATUS_CONNECTION_CLOSED =         -7,
-  AMQP_STATUS_BAD_URL =                   -8,
-  AMQP_STATUS_SOCKET_ERROR =              -9,
-  AMQP_STATUS_SSL_ERROR =                 -10,
-  AMQP_STATUS_ERROR =                     -99
+  AMQP_STATUS_OK =                         0x0,
+  AMQP_STATUS_NO_MEMORY =                 -0x0001,
+  AMQP_STATUS_BAD_AMQP_DATA =             -0x0002,
+  AMQP_STATUS_UNKNOWN_CLASS =             -0x0003,
+  AMQP_STATUS_UNKNOWN_METHOD =            -0x0004,
+  AMQP_STATUS_HOSTNAME_RESOLUTION_FAILED= -0x0005,
+  AMQP_STATUS_INCOMPATIBLE_AMQP_VERSION = -0x0006,
+  AMQP_STATUS_CONNECTION_CLOSED =         -0x0007,
+  AMQP_STATUS_BAD_URL =                   -0x0008,
+  AMQP_STATUS_SOCKET_ERROR =              -0x0009,
+
+  AMQP_STATUS_SSL_ERROR =                 -0x0200
 } amqp_status_enum;
 
 AMQP_PUBLIC_FUNCTION

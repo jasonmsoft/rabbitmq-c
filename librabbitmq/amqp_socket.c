@@ -132,8 +132,8 @@ int amqp_open_socket(char const *hostname,
 
   last_error = getaddrinfo(hostname, portnumber_string, &hint, &address_list);
 
-  if (last_error != 0) {
-    return AMQP_STATUS_GETHOSTBYNAME_FAILED;
+  if (0 != last_error) {
+    return AMQP_STATUS_HOSTNAME_RESOLUTION_FAILED;
   }
 
   for (addr = address_list; addr; addr = addr->ai_next) {
