@@ -186,6 +186,12 @@ amqp_simple_wait_frame_on_channel(amqp_connection_state_t state,
                                   amqp_channel_t channel,
                                   amqp_frame_t *decoded_frame);
 
+int
+amqp_simple_wait_frame_on_channel_noblock(amqp_connection_state_t state,
+                                          amqp_channel_t channel,
+                                          amqp_frame_t *decoded_frame,
+                                          struct timeval *timeout);
+
 AMQP_END_DECLS
 
 #endif /* AMQP_SOCKET_H */

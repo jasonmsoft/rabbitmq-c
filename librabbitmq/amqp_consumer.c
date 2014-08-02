@@ -199,10 +199,83 @@ error_out1:
   return ret;
 }
 
+amqp_rpc_reply_t
+amqp_consume_message_on_channel(amqp_connection_state_t state,
+                                amqp_channel_t channel,
+                                amqp_envelope_t *envelope,
+                                struct timeval *timeout, AMQP_UNUSED int flags)
+{
+  int res;
+  amqp_frame_t frame;
+  amqp_basic_deliver_t *delivery_method;
+  amqp_rpc_reply_t ret;
+
+  memset(&ret, 0, sizeof(amqp_rpc_reply_t));
+  memset(envelope, 0, sizeof(amqp_envelope_t));
+
+  //  res = amqp_simple_wait_frame_noblock(state, &frame, timeout);
+  res = amqp_simple_wait_frame_on_channel_noblock(state, channel, &frame, timeout);
+  if (AMQP_STATUS_OK != res) {
+    ret.reply_type = AMQP_RESPONSE_LIBRARY_EXCEPTION;
+    ret.library_error = res;
+    goto error_out1;
+  }
+
+  if (AMQP_FRAME_METHOD != frame.frame_type
+      || AMQP_BASIC_DELIVER_METHOD != frame.payload.method.id) {
+    amqp_put_back_frame(state, &frame);
+    ret.reply_type = AMQP_RESPONSE_LIBRARY_EXCEPTION;
+    ret.library_error = AMQP_STATUS_UNEXPECTED_STATE;
+    goto error_out1;
+  }
+
+  delivery_method = frame.payload.method.decoded;
+
+  envelope->channel = frame.channel;
+  envelope->consumer_tag = amqp_bytes_malloc_dup(delivery_method->consumer_tag);
+  envelope->delivery_tag = delivery_method->delivery_tag;
+  envelope->redelivered = delivery_method->redelivered;
+  envelope->exchange = amqp_bytes_malloc_dup(delivery_method->exchange);
+  envelope->routing_key = amqp_bytes_malloc_dup(delivery_method->routing_key);
+
+  if (amqp_bytes_malloc_dup_failed(envelope->consumer_tag) ||
+      amqp_bytes_malloc_dup_failed(envelope->exchange) ||
+      amqp_bytes_malloc_dup_failed(envelope->routing_key)) {
+    ret.reply_type = AMQP_RESPONSE_LIBRARY_EXCEPTION;
+    ret.library_error = AMQP_STATUS_NO_MEMORY;
+    goto error_out2;
+  }
+
+  ret = amqp_read_message(state, envelope->channel, &envelope->message, 0);
+  if (AMQP_RESPONSE_NORMAL != ret.reply_type) {
+    goto error_out2;
+  }
+
+  ret.reply_type = AMQP_RESPONSE_NORMAL;
+  return ret;
+
+error_out2:
+  amqp_bytes_free(envelope->routing_key);
+  amqp_bytes_free(envelope->exchange);
+  amqp_bytes_free(envelope->consumer_tag);
+error_out1:
+  return ret;
+}
+
+
 amqp_rpc_reply_t amqp_read_message(amqp_connection_state_t state,
                                    amqp_channel_t channel,
                                    amqp_message_t *message,
                                    AMQP_UNUSED int flags)
+{
+  return amqp_read_message_noblock(state, channel, message, flags, NULL);
+}
+
+amqp_rpc_reply_t amqp_read_message_noblock(amqp_connection_state_t state,
+                                           amqp_channel_t channel,
+                                           amqp_message_t *message,
+                                           AMQP_UNUSED int flags,
+                                           struct timeval *timeout)
 {
   amqp_frame_t frame;
   amqp_rpc_reply_t ret;
@@ -214,7 +287,7 @@ amqp_rpc_reply_t amqp_read_message(amqp_connection_state_t state,
   memset(&ret, 0, sizeof(amqp_rpc_reply_t));
   memset(message, 0, sizeof(amqp_message_t));
 
-  res = amqp_simple_wait_frame_on_channel(state, channel, &frame);
+  res = amqp_simple_wait_frame_on_channel_noblock(state, channel, &frame, timeout);
   if (AMQP_STATUS_OK != res) {
     ret.reply_type = AMQP_RESPONSE_LIBRARY_EXCEPTION;
     ret.library_error = res;
@@ -264,7 +337,7 @@ amqp_rpc_reply_t amqp_read_message(amqp_connection_state_t state,
   body_read_ptr = message->body.bytes;
 
   while (body_read < message->body.len) {
-    res = amqp_simple_wait_frame_on_channel(state, channel, &frame);
+    res = amqp_simple_wait_frame_on_channel_noblock(state, channel, &frame, timeout);
     if (AMQP_STATUS_OK != res) {
       ret.reply_type = AMQP_RESPONSE_LIBRARY_EXCEPTION;
       ret.library_error = res;

@@ -2123,6 +2123,14 @@ AMQP_CALL amqp_read_message(amqp_connection_state_t state,
                             amqp_channel_t channel,
                             amqp_message_t *message, int flags);
 
+AMQP_PUBLIC_FUNCTION
+amqp_rpc_reply_t
+AMQP_CALL amqp_read_message_noblock(amqp_connection_state_t state,
+                                    amqp_channel_t channel,
+                                    amqp_message_t *message, int flags,
+                                    struct timeval *timeout);
+
+
 /**
  * Frees memory associated with a amqp_message_t allocated in amqp_read_message
  *
@@ -2184,6 +2192,13 @@ amqp_rpc_reply_t
 AMQP_CALL amqp_consume_message(amqp_connection_state_t state,
                                amqp_envelope_t *envelope,
                                struct timeval *timeout, int flags);
+
+AMQP_PUBLIC_FUNCTION
+amqp_rpc_reply_t
+AMQP_CALL amqp_consume_message_on_channel(amqp_connection_state_t state,
+                                amqp_channel_t channel,
+                                amqp_envelope_t *envelope,
+                                struct timeval *timeout, int flags);
 
 /**
  * Frees memory associated with a amqp_envelope_t allocated in amqp_consume_message()

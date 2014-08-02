@@ -866,6 +866,14 @@ int amqp_simple_wait_frame_on_channel(amqp_connection_state_t state,
                                       amqp_channel_t channel,
                                       amqp_frame_t *decoded_frame)
 {
+  amqp_simple_wait_frame_on_channel_noblock(state, channel, decoded_frame, NULL);
+}
+
+int amqp_simple_wait_frame_on_channel_noblock(amqp_connection_state_t state,
+                                              amqp_channel_t channel,
+					      amqp_frame_t *decoded_frame,
+                                              struct timeval *timeout)
+{
   amqp_frame_t *frame_ptr;
   amqp_link_t *cur;
   int res;
@@ -886,7 +894,7 @@ int amqp_simple_wait_frame_on_channel(amqp_connection_state_t state,
   }
 
   while (1) {
-    res = wait_frame_inner(state, decoded_frame, NULL);
+    res = wait_frame_inner(state, decoded_frame, timeout);
 
     if (AMQP_STATUS_OK != res) {
       return res;
