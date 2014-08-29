@@ -72,12 +72,12 @@ static int amqp_decode_array(amqp_bytes_t encoded,
   int res;
 
   if (!amqp_decode_32(encoded, offset, &arraysize)) {
-    return -ERROR_BAD_AMQP_DATA;
+    return AMQP_STATUS_BAD_AMQP_DATA;
   }
 
   entries = malloc(allocated_entries * sizeof(amqp_field_value_t));
   if (entries == NULL) {
-    return -ERROR_NO_MEMORY;
+    return AMQP_STATUS_NO_MEMORY;
   }
 
   limit = *offset + arraysize;
@@ -86,7 +86,7 @@ static int amqp_decode_array(amqp_bytes_t encoded,
       void *newentries;
       allocated_entries = allocated_entries * 2;
       newentries = realloc(entries, allocated_entries * sizeof(amqp_field_value_t));
-      res = -ERROR_NO_MEMORY;
+      res = AMQP_STATUS_NO_MEMORY;
       if (newentries == NULL) {
         goto out;
       }
@@ -105,7 +105,7 @@ static int amqp_decode_array(amqp_bytes_t encoded,
 
   output->num_entries = num_entries;
   output->entries = amqp_pool_alloc(pool, num_entries * sizeof(amqp_field_value_t));
-  res = -ERROR_NO_MEMORY;
+  res = AMQP_STATUS_NO_MEMORY;
   /* NULL is legitimate if we requested a zero-length block. */
   if (output->entries == NULL && num_entries > 0) {
     goto out;
@@ -132,19 +132,19 @@ int amqp_decode_table(amqp_bytes_t encoded,
   int res;
 
   if (!amqp_decode_32(encoded, offset, &tablesize)) {
-    return -ERROR_BAD_AMQP_DATA;
+    return AMQP_STATUS_BAD_AMQP_DATA;
   }
 
   entries = malloc(allocated_entries * sizeof(amqp_table_entry_t));
   if (entries == NULL) {
-    return -ERROR_NO_MEMORY;
+    return AMQP_STATUS_NO_MEMORY;
   }
 
   limit = *offset + tablesize;
   while (*offset < limit) {
     uint8_t keylen;
 
-    res = -ERROR_BAD_AMQP_DATA;
+    res = AMQP_STATUS_BAD_AMQP_DATA;
     if (!amqp_decode_8(encoded, offset, &keylen)) {
       goto out;
     }
@@ -153,7 +153,7 @@ int amqp_decode_table(amqp_bytes_t encoded,
       void *newentries;
       allocated_entries = allocated_entries * 2;
       newentries = realloc(entries, allocated_entries * sizeof(amqp_table_entry_t));
-      res = -ERROR_NO_MEMORY;
+      res = AMQP_STATUS_NO_MEMORY;
       if (newentries == NULL) {
         goto out;
       }
@@ -161,7 +161,7 @@ int amqp_decode_table(amqp_bytes_t encoded,
       entries = newentries;
     }
 
-    res = -ERROR_BAD_AMQP_DATA;
+    res = AMQP_STATUS_BAD_AMQP_DATA;
     if (!amqp_decode_bytes(encoded, offset, &entries[num_entries].key, keylen)) {
       goto out;
     }
@@ -177,14 +177,14 @@ int amqp_decode_table(amqp_bytes_t encoded,
 
   output->num_entries = num_entries;
   output->entries = amqp_pool_alloc(pool, num_entries * sizeof(amqp_table_entry_t));
-  res = -ERROR_NO_MEMORY;
+  res = AMQP_STATUS_NO_MEMORY;
   /* NULL is legitimate if we requested a zero-length block. */
   if (output->entries == NULL && num_entries > 0) {
     goto out;
   }
 
   memcpy(output->entries, entries, num_entries * sizeof(amqp_table_entry_t));
-  res = 0;
+  res = AMQP_STATUS_OK;
 
 out:
   free(entries);
@@ -196,7 +196,7 @@ static int amqp_decode_field_value(amqp_bytes_t encoded,
                                    amqp_field_value_t *entry,
                                    size_t *offset)
 {
-  int res = -ERROR_BAD_AMQP_DATA;
+  int res = AMQP_STATUS_BAD_AMQP_DATA;
 
   if (!amqp_decode_8(encoded, offset, &entry->kind)) {
     goto out;
@@ -275,7 +275,7 @@ static int amqp_decode_field_value(amqp_bytes_t encoded,
     goto out;
   }
 
-  res = 0;
+  res = AMQP_STATUS_OK;
 
 out:
   return res;
@@ -299,11 +299,12 @@ static int amqp_encode_array(amqp_bytes_t encoded,
     }
   }
 
-  if (amqp_encode_32(encoded, &start, *offset - start - 4)) {
-    res = 0;
-  } else {
-    res = -ERROR_BAD_AMQP_DATA;
+  if (!amqp_encode_32(encoded, &start, *offset - start - 4)) {
+    res = AMQP_STATUS_TABLE_TOO_BIG;
+    goto out;
   }
+
+  res = AMQP_STATUS_OK;
 
 out:
   return res;
@@ -319,13 +320,13 @@ int amqp_encode_table(amqp_bytes_t encoded,
   *offset += 4; /* size of the table gets filled in later on */
 
   for (i = 0; i < input->num_entries; i++) {
-    res = amqp_encode_8(encoded, offset, input->entries[i].key.len);
-    if (res < 0) {
+    if (!amqp_encode_8(encoded, offset, input->entries[i].key.len)) {
+      res = AMQP_STATUS_TABLE_TOO_BIG;
       goto out;
     }
 
-    res = amqp_encode_bytes(encoded, offset, input->entries[i].key);
-    if (res < 0) {
+    if (!amqp_encode_bytes(encoded, offset, input->entries[i].key)) {
+      res = AMQP_STATUS_TABLE_TOO_BIG;
       goto out;
     }
 
@@ -335,11 +336,12 @@ int amqp_encode_table(amqp_bytes_t encoded,
     }
   }
 
-  if (amqp_encode_32(encoded, &start, *offset - start - 4)) {
-    res = 0;
-  } else {
-    res = -ERROR_BAD_AMQP_DATA;
+  if (!amqp_encode_32(encoded, &start, *offset - start - 4)) {
+    res = AMQP_STATUS_TABLE_TOO_BIG;
+    goto out;
   }
+
+  res = AMQP_STATUS_OK;
 
 out:
   return res;
@@ -349,13 +351,17 @@ static int amqp_encode_field_value(amqp_bytes_t encoded,
                                    amqp_field_value_t *entry,
                                    size_t *offset)
 {
-  int res = -ERROR_BAD_AMQP_DATA;
+  int res = AMQP_STATUS_BAD_AMQP_DATA;
 
   if (!amqp_encode_8(encoded, offset, entry->kind)) {
     goto out;
   }
 
-#define FIELD_ENCODER(bits, val) if (!amqp_encode_##bits(encoded, offset, val)) goto out; break
+#define FIELD_ENCODER(bits, val) if (!amqp_encode_##bits(encoded, offset, val)) { \
+                                    res = AMQP_STATUS_TABLE_TOO_BIG;              \
+                                    goto out;                                     \
+                                  }                                               \
+                                  break
 
   switch (entry->kind) {
   case AMQP_FIELD_KIND_BOOLEAN:
@@ -392,6 +398,7 @@ static int amqp_encode_field_value(amqp_bytes_t encoded,
   case AMQP_FIELD_KIND_DECIMAL:
     if (!amqp_encode_8(encoded, offset, entry->value.decimal.decimals)
         || !amqp_encode_32(encoded, offset, entry->value.decimal.value)) {
+      res = AMQP_STATUS_TABLE_TOO_BIG;
       goto out;
     }
     break;
@@ -403,6 +410,7 @@ static int amqp_encode_field_value(amqp_bytes_t encoded,
   case AMQP_FIELD_KIND_BYTES:
     if (!amqp_encode_32(encoded, offset, entry->value.bytes.len)
         || !amqp_encode_bytes(encoded, offset, entry->value.bytes)) {
+      res = AMQP_STATUS_TABLE_TOO_BIG;
       goto out;
     }
     break;
@@ -422,10 +430,11 @@ static int amqp_encode_field_value(amqp_bytes_t encoded,
     break;
 
   default:
-    abort();
+    res = AMQP_STATUS_INVALID_PARAMETER;
+    goto out;
   }
 
-  res = 0;
+  res = AMQP_STATUS_OK;
 
 out:
   return res;
@@ -452,4 +461,154 @@ int amqp_table_entry_cmp(void const *entry1, void const *entry2)
   }
 
   return p1->key.len - p2->key.len;
+}
+
+static int
+amqp_field_value_clone(amqp_field_value_t *original, amqp_field_value_t *clone, amqp_pool_t *pool)
+{
+  int i;
+  int res;
+  clone->kind = original->kind;
+
+  switch (clone->kind) {
+    case AMQP_FIELD_KIND_BOOLEAN:
+      clone->value.boolean = original->value.boolean;
+      break;
+
+    case AMQP_FIELD_KIND_I8:
+      clone->value.i8 = original->value.i8;
+      break;
+
+    case AMQP_FIELD_KIND_U8:
+      clone->value.u8 = original->value.u8;
+      break;
+
+    case AMQP_FIELD_KIND_I16:
+      clone->value.i16 = original->value.i16;
+      break;
+
+    case AMQP_FIELD_KIND_U16:
+      clone->value.u16 = original->value.u16;
+      break;
+
+    case AMQP_FIELD_KIND_I32:
+      clone->value.i32 = original->value.i32;
+      break;
+
+    case AMQP_FIELD_KIND_U32:
+      clone->value.u32 = original->value.u32;
+      break;
+
+    case AMQP_FIELD_KIND_I64:
+      clone->value.i64 = original->value.i64;
+      break;
+
+    case AMQP_FIELD_KIND_U64:
+    case AMQP_FIELD_KIND_TIMESTAMP:
+      clone->value.u64 = original->value.u64;
+      break;
+
+    case AMQP_FIELD_KIND_F32:
+      clone->value.f32 = original->value.f32;
+      break;
+
+    case AMQP_FIELD_KIND_F64:
+      clone->value.f64 = original->value.f64;
+      break;
+
+    case AMQP_FIELD_KIND_DECIMAL:
+      clone->value.decimal = original->value.decimal;
+      break;
+
+    case AMQP_FIELD_KIND_UTF8:
+    case AMQP_FIELD_KIND_BYTES:
+      if (0 == original->value.bytes.len) {
+        clone->value.bytes = amqp_empty_bytes;
+      } else {
+        amqp_pool_alloc_bytes(pool, original->value.bytes.len, &clone->value.bytes);
+        if (NULL == clone->value.bytes.bytes) {
+          return AMQP_STATUS_NO_MEMORY;
+        }
+        memcpy(clone->value.bytes.bytes, original->value.bytes.bytes, clone->value.bytes.len);
+      }
+      break;
+
+    case AMQP_FIELD_KIND_ARRAY:
+      if (0 == original->value.array.entries) {
+        clone->value.array = amqp_empty_array;
+      } else {
+        clone->value.array.num_entries = original->value.array.num_entries;
+        clone->value.array.entries = amqp_pool_alloc(pool, clone->value.array.num_entries * sizeof(amqp_field_value_t));
+        if (NULL == clone->value.array.entries) {
+          return AMQP_STATUS_NO_MEMORY;
+        }
+
+        for (i = 0; i < clone->value.array.num_entries; ++i) {
+          res = amqp_field_value_clone(&original->value.array.entries[i], &clone->value.array.entries[i], pool);
+          if (AMQP_STATUS_OK != res) {
+            return res;
+          }
+        }
+      }
+      break;
+
+    case AMQP_FIELD_KIND_TABLE:
+      return amqp_table_clone(&original->value.table, &clone->value.table, pool);
+
+    case AMQP_FIELD_KIND_VOID:
+      break;
+
+    default:
+      return AMQP_STATUS_INVALID_PARAMETER;
+  }
+
+  return AMQP_STATUS_OK;
+}
+
+
+static int
+amqp_table_entry_clone(amqp_table_entry_t *original, amqp_table_entry_t *clone, amqp_pool_t *pool)
+{
+  if (0 == original->key.len) {
+    return AMQP_STATUS_INVALID_PARAMETER;
+  }
+
+  amqp_pool_alloc_bytes(pool, original->key.len, &clone->key);
+  if (NULL == clone->key.bytes) {
+    return AMQP_STATUS_NO_MEMORY;
+  }
+
+  memcpy(clone->key.bytes, original->key.bytes, clone->key.len);
+
+  return amqp_field_value_clone(&original->value, &clone->value, pool);
+}
+
+int
+amqp_table_clone(amqp_table_t *original, amqp_table_t *clone, amqp_pool_t *pool)
+{
+  int i;
+  int res;
+  clone->num_entries = original->num_entries;
+  if (0 == clone->num_entries) {
+    *clone = amqp_empty_table;
+    return AMQP_STATUS_OK;
+  }
+
+  clone->entries = amqp_pool_alloc(pool, clone->num_entries * sizeof(amqp_table_entry_t));
+
+  if (NULL == clone->entries) {
+    return AMQP_STATUS_NO_MEMORY;
+  }
+
+  for (i = 0; i < clone->num_entries; ++i) {
+    res = amqp_table_entry_clone(&original->entries[i], &clone->entries[i], pool);
+    if (AMQP_STATUS_OK != res) {
+      goto error_out1;
+    }
+  }
+
+  return AMQP_STATUS_OK;
+
+error_out1:
+  return res;
 }

@@ -81,7 +81,11 @@ if (ENABLE_SSL_SUPPORT)
   set(AMQP_SSL_SOCKET_H_PATH amqp_ssl_socket.h)
 
   if (SSL_ENGINE STREQUAL "OpenSSL")
-    set(AMQP_SSL_SRCS ${AMQP_SSL_SOCKET_H_PATH} amqp_openssl.c)
+    set(AMQP_SSL_SRCS ${AMQP_SSL_SOCKET_H_PATH}
+        amqp_openssl.c
+        amqp_hostcheck.c
+        amqp_hostcheck.h
+    )
     include_directories(${OPENSSL_INCLUDE_DIR})
     set(AMQP_SSL_LIBS ${OPENSSL_LIBRARIES})
 
@@ -120,7 +124,8 @@ set(RABBITMQ_SOURCES
     ${AMQP_FRAMING_C_PATH}
     amqp_api.c amqp.h amqp_connection.c amqp_mem.c amqp_private.h amqp_socket.c
     amqp_table.c amqp_url.c amqp_socket.h amqp_tcp_socket.c amqp_tcp_socket.h
-    ${SOCKET_IMPL}/socket.h ${SOCKET_IMPL}/socket.c
+    amqp_timer.c amqp_timer.h
+    amqp_consumer.c
     ${AMQP_SSL_SRCS}
 )
 
@@ -128,7 +133,7 @@ add_definitions(-DAMQP_BUILD)
 
 include(InstallMacros)
 
-set(RMQ_LIBRARIES ${AMQP_SSL_LIBS} ${SOCKET_LIBRARIES} ${CMAKE_THREAD_LIBS_INIT})
+set(RMQ_LIBRARIES ${AMQP_SSL_LIBS} ${SOCKET_LIBRARIES} ${LIBRT} ${CMAKE_THREAD_LIBS_INIT})
 
 if (BUILD_SHARED_LIBS)
     add_library(rabbitmq SHARED ${RABBITMQ_SOURCES})
@@ -142,9 +147,9 @@ if (BUILD_SHARED_LIBS)
     endif (WIN32)
 
     install(TARGETS rabbitmq
-        RUNTIME DESTINATION bin
-        LIBRARY DESTINATION lib
-        ARCHIVE DESTINATION lib
+        RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
+        LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
+        ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
         )
     install_pdb(rabbitmq)
 
@@ -164,7 +169,7 @@ if (BUILD_STATIC_LIBS)
     endif (WIN32)
 
     install(TARGETS rabbitmq-static
-        ARCHIVE DESTINATION lib
+        ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
         )
     install_pdb(rabbitmq-static)
 
@@ -179,7 +184,7 @@ install(FILES
   amqp_tcp_socket.h
   ${AMQP_SSL_SOCKET_H_PATH}
   ${STDINT_H_INSTALL_FILE}
-  DESTINATION include
+  DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}
     )
 
 set(RMQ_LIBRARY_TARGET ${RMQ_LIBRARY_TARGET} PARENT_SCOPE)

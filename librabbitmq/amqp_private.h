@@ -45,31 +45,20 @@
 #include "amqp_framing.h"
 #include <string.h>
 
-#ifdef HAVE_ARPA_INET_H
-#include <arpa/inet.h>
+#ifdef _WIN32
+# ifndef WINVER
+/* WINVER 0x0502 is WinXP SP2+, Windows Server 2003 SP1+
+ * See: http://msdn.microsoft.com/en-us/library/windows/desktop/aa383745(v=vs.85).aspx#macros_for_conditional_declarations */
+#  define WINVER 0x0502
+# endif
+# ifndef WIN32_LEAN_AND_MEAN
+#  define WIN32_LEAN_AND_MEAN
+# endif
+# include <Winsock2.h>
+#else
+# include <arpa/inet.h>
+# include <sys/uio.h>
 #endif
-
-/* Error numbering: Because of differences in error numbering on
- * different platforms, we want to keep error numbers opaque for
- * client code.  Internally, we encode the category of an error
- * (i.e. where its number comes from) in the top bits of the number
- * (assuming that an int has at least 32 bits).
- */
-#define ERROR_CATEGORY_CLIENT (0 << 29) /* librabbitmq error codes */
-#define ERROR_CATEGORY_OS (1 << 29) /* OS-specific error codes */
-#define ERROR_CATEGORY_SSL (1 << 28) /* SSL-specific error codes */
-#define ERROR_CATEGORY_MASK (ERROR_CATEGORY_OS | ERROR_CATEGORY_SSL)
-
-/* librabbitmq error codes */
-#define ERROR_NO_MEMORY 1
-#define ERROR_BAD_AMQP_DATA 2
-#define ERROR_UNKNOWN_CLASS 3
-#define ERROR_UNKNOWN_METHOD 4
-#define ERROR_GETHOSTBYNAME_FAILED 5
-#define ERROR_INCOMPATIBLE_AMQP_VERSION 6
-#define ERROR_CONNECTION_CLOSED 7
-#define ERROR_BAD_AMQP_URL 8
-#define ERROR_MAX 8
 
 /* GCC attributes */
 #if __GNUC__ > 2 | (__GNUC__ == 2 && __GNUC_MINOR__ > 4)
@@ -98,6 +87,7 @@ amqp_ssl_error_string(int err);
 #endif
 
 #include "amqp_socket.h"
+#include "amqp_timer.h"
 
 /*
  * Connection states: XXX FIX THIS
@@ -139,15 +129,27 @@ typedef struct amqp_link_t_ {
   void *data;
 } amqp_link_t;
 
+#define POOL_TABLE_SIZE 16
+
+typedef struct amqp_pool_table_entry_t_ {
+  struct amqp_pool_table_entry_t_ *next;
+  amqp_pool_t pool;
+  amqp_channel_t channel;
+} amqp_pool_table_entry_t;
+
 struct amqp_connection_state_t_ {
-  amqp_pool_t frame_pool;
-  amqp_pool_t decoding_pool;
+  amqp_pool_table_entry_t *pool_table[POOL_TABLE_SIZE];
 
   amqp_connection_state_enum state;
 
   int channel_max;
   int frame_max;
   int heartbeat;
+
+  /* buffer for holding frame headers.  Allows us to delay allocating
+   * the raw frame buffer until the type, channel, and size are all known
+   */
+  char header_buffer[HEADER_SIZE + 1];
   amqp_bytes_t inbound_buffer;
 
   size_t inbound_offset;
@@ -165,7 +167,33 @@ struct amqp_connection_state_t_ {
   amqp_link_t *last_queued_frame;
 
   amqp_rpc_reply_t most_recent_api_result;
+
+  uint64_t next_recv_heartbeat;
+  uint64_t next_send_heartbeat;
+
+  amqp_table_t server_properties;
+  amqp_pool_t properties_pool;
 };
+
+amqp_pool_t *amqp_get_or_create_channel_pool(amqp_connection_state_t connection, amqp_channel_t channel);
+amqp_pool_t *amqp_get_channel_pool(amqp_connection_state_t state, amqp_channel_t channel);
+
+static inline amqp_boolean_t amqp_heartbeat_enabled(amqp_connection_state_t state)
+{
+  return (state->heartbeat > 0);
+}
+
+static inline uint64_t amqp_calc_next_send_heartbeat(amqp_connection_state_t state, uint64_t cur)
+{
+  return cur + ((uint64_t)state->heartbeat * AMQP_NS_PER_S);
+}
+
+static inline uint64_t amqp_calc_next_recv_heartbeat(amqp_connection_state_t state, uint64_t cur)
+{
+  return cur + ((uint64_t)state->heartbeat * 2 * AMQP_NS_PER_S);
+}
+
+int amqp_try_recv(amqp_connection_state_t state, uint64_t current_time);
 
 static inline void *amqp_offset(void *data, size_t offset)
 {

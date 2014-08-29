@@ -83,7 +83,6 @@ void die_errno(int err, const char *fmt, ...)
 void die_amqp_error(int err, const char *fmt, ...)
 {
   va_list ap;
-  char *errstr;
 
   if (err >= 0) {
     return;
@@ -92,21 +91,20 @@ void die_amqp_error(int err, const char *fmt, ...)
   va_start(ap, fmt);
   vfprintf(stderr, fmt, ap);
   va_end(ap);
-  fprintf(stderr, ": %s\n", errstr = amqp_error_string(-err));
-  free(errstr);
+  fprintf(stderr, ": %s\n", amqp_error_string2(err));
   exit(1);
 }
 
-char *amqp_server_exception_string(amqp_rpc_reply_t r)
+const char *amqp_server_exception_string(amqp_rpc_reply_t r)
 {
   int res;
-  char *s;
+  static char s[512];
 
   switch (r.reply.id) {
   case AMQP_CONNECTION_CLOSE_METHOD: {
     amqp_connection_close_t *m
       = (amqp_connection_close_t *)r.reply.decoded;
-    res = asprintf(&s, "server connection error %d, message: %.*s",
+    res = snprintf(s, sizeof(s), "server connection error %d, message: %.*s",
                    m->reply_code,
                    (int)m->reply_text.len,
                    (char *)m->reply_text.bytes);
@@ -116,7 +114,7 @@ char *amqp_server_exception_string(amqp_rpc_reply_t r)
   case AMQP_CHANNEL_CLOSE_METHOD: {
     amqp_channel_close_t *m
       = (amqp_channel_close_t *)r.reply.decoded;
-    res = asprintf(&s, "server channel error %d, message: %.*s",
+    res = snprintf(s, sizeof(s), "server channel error %d, message: %.*s",
                    m->reply_code,
                    (int)m->reply_text.len,
                    (char *)m->reply_text.bytes);
@@ -124,7 +122,7 @@ char *amqp_server_exception_string(amqp_rpc_reply_t r)
   }
 
   default:
-    res = asprintf(&s, "unknown server error, method id 0x%08X",
+    res = snprintf(s, sizeof(s), "unknown server error, method id 0x%08X",
                    r.reply.id);
     break;
   }
@@ -132,17 +130,17 @@ char *amqp_server_exception_string(amqp_rpc_reply_t r)
   return res >= 0 ? s : NULL;
 }
 
-char *amqp_rpc_reply_string(amqp_rpc_reply_t r)
+const char *amqp_rpc_reply_string(amqp_rpc_reply_t r)
 {
   switch (r.reply_type) {
   case AMQP_RESPONSE_NORMAL:
-    return strdup("normal response");
+    return "normal response";
 
   case AMQP_RESPONSE_NONE:
-    return strdup("missing RPC reply type");
+    return "missing RPC reply type";
 
   case AMQP_RESPONSE_LIBRARY_EXCEPTION:
-    return amqp_error_string(r.library_error);
+    return amqp_error_string2(r.library_error);
 
   case AMQP_RESPONSE_SERVER_EXCEPTION:
     return amqp_server_exception_string(r);
@@ -155,7 +153,6 @@ char *amqp_rpc_reply_string(amqp_rpc_reply_t r)
 void die_rpc(amqp_rpc_reply_t r, const char *fmt, ...)
 {
   va_list ap;
-  char *errstr;
 
   if (r.reply_type == AMQP_RESPONSE_NORMAL) {
     return;
@@ -164,8 +161,7 @@ void die_rpc(amqp_rpc_reply_t r, const char *fmt, ...)
   va_start(ap, fmt);
   vfprintf(stderr, fmt, ap);
   va_end(ap);
-  fprintf(stderr, ": %s\n", errstr = amqp_rpc_reply_string(r));
-  free(errstr);
+  fprintf(stderr, ": %s\n", amqp_rpc_reply_string(r));
   exit(1);
 }
 
@@ -336,7 +332,7 @@ amqp_connection_state_t make_connection(void)
   conn = amqp_new_connection();
   if (ci.ssl) {
 #ifdef WITH_SSL
-    socket = amqp_ssl_socket_new();
+    socket = amqp_ssl_socket_new(conn);
     if (!socket) {
       die("creating SSL/TLS socket");
     }
@@ -350,7 +346,7 @@ amqp_connection_state_t make_connection(void)
     die("librabbitmq was not built with SSL/TLS support");
 #endif
   } else {
-    socket = amqp_tcp_socket_new();
+    socket = amqp_tcp_socket_new(conn);
     if (!socket) {
       die("creating TCP socket (out of memory)");
     }
@@ -359,7 +355,6 @@ amqp_connection_state_t make_connection(void)
   if (status) {
     die("opening socket to %s:%d", ci.host, ci.port);
   }
-  amqp_set_socket(conn, socket);
   die_rpc(amqp_login(conn, ci.vhost, 0, 131072, 0,
                      AMQP_SASL_METHOD_PLAIN,
                      ci.user, ci.password),
