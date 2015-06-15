@@ -141,3 +141,5 @@ access an AMQP connection or any of its channels from more than one
 thread, it is entirely responsible for designing and implementing an
 appropriate locking scheme. It will generally be much simpler to have
 a connection exclusive to each thread that needs AMQP service.
+
+编译kamailio的kazoo的必须的依赖
